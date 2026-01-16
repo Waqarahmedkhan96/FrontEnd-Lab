@@ -1,0 +1,29 @@
+body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; }
+
+canvas { display: block; }
+
+#ui-layer {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px); /* This creates the glass effect */
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    pointer-events: none; /* Allows you to click through the UI to move the stars */
+}
+
+button {
+    pointer-events: auto;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+button:hover { background: #6366f1; }
