@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic-Tac-Toe (OOP)</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 40px 16px;
+      display: flex;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .game { width: max-content; }
+
+    .game__title { margin: 0 0 12px; }
+
+    .board {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(3, 80px);
+      gap: 8px;
+      margin: 16px auto;
+    }
+
+    .cell {
+      width: 80px;
+      height: 80px;
+      border: 2px solid #000;
+      font-size: 48px;
+      line-height: 1;
+      cursor: pointer;
+      background: #fff;
+      user-select: none;
+    }
+
+    .cell:disabled {
+      cursor: not-allowed;
+      opacity: 0.85;
+    }
+
+    .status {
+      min-height: 24px;
+      margin: 8px 0 16px;
+      font-size: 18px;
+    }
+
+    .restart {
+      padding: 10px 18px;
+      cursor: pointer;
+    }
+
+    .win-line {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 6px;
+      background: #000;
+      border-radius: 999px;
+      transform-origin: 0 50%;
+      display: none;
+      z-index: 5;
+    }
+
+    #fireworksCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="game" id="gameContainer">
+    <h1 class="game__title">Tic Tac Toe</h1>
+
+    <section class="board" id="cellContainer" aria-label="Tic Tac Toe Board">
+      <div class="win-line" id="winLine" aria-hidden="true"></div>
+
+      <button class="cell" type="button" data-index="0" aria-label="Cell 1"></button>
+      <button class="cell" type="button" data-index="1" aria-label="Cell 2"></button>
+      <button class="cell" type="button" data-index="2" aria-label="Cell 3"></button>
+
+      <button class="cell" type="button" data-index="3" aria-label="Cell 4"></button>
+      <button class="cell" type="button" data-index="4" aria-label="Cell 5"></button>
+      <button class="cell" type="button" data-index="5" aria-label="Cell 6"></button>
+
+      <button class="cell" type="button" data-index="6" aria-label="Cell 7"></button>
+      <button class="cell" type="button" data-index="7" aria-label="Cell 8"></button>
+      <button class="cell" type="button" data-index="8" aria-label="Cell 9"></button>
+    </section>
+
+    <p class="status" id="statusText" role="status" aria-live="polite"></p>
+    <button class="restart" id="restartBtn" type="button">Restart</button>
+  </main>
+
+  <canvas id="fireworksCanvas" aria-hidden="true"></canvas>
+
+  <script>
+    // Fireworks = visual effect class (canvas particles)
+    class Fireworks {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+        this.particles = [];
+        this.running = false;
+        this.rafId = null;
+        this.spawnIntervalId = null;
+
+        this.resize();
+        window.addEventListener("resize", () => this.resize());
+      }
+
+      resize() {
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = Math.floor(window.innerWidth * dpr);
+        this.canvas.height = Math.floor(window.innerHeight * dpr);
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      start() {
+        if (this.running) return;
+        this.running = true;
+        this.spawnIntervalId = setInterval(() => this.spawnBurst(), 350);
+        this.loop();
+      }
+
+      stop() {
+        this.running = false;
+        if (this.rafId) cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+
+        if (this.spawnIntervalId) clearInterval(this.spawnIntervalId);
+        this.spawnIntervalId = null;
+
+        this.particles = [];
+        this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      }
+
+      spawnBurst() {
+        const x = Math.random() * window.innerWidth;
+        const y = Math.random() * (window.innerHeight * 0.5);
+        const count = 50 + Math.floor(Math.random() * 40);
+
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 4;
+
+          this.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 60 + Math.floor(Math.random() * 30),
+            radius: 2 + Math.random() * 2,
+            color: `hsl(${Math.floor(Math.random() * 360)}, 100%, 60%)`,
+          });
+        }
+      }
+
+      loop() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+        this.particles = this.particles
+          .map((p) => {
+            p.vy += 0.04;
+            p.vx *= 0.99;
+            p.vy *= 0.99;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 1;
+            return p;
+          })
+          .filter((p) => p.life > 0);
+
+        for (const p of this.particles) {
+          ctx.beginPath();
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = Math.max(0, p.life / 90);
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
+
+        if (this.running) {
+          this.rafId = requestAnimationFrame(() => this.loop());
+        }
+      }
+    }
+
+    // Game = main OOP class holding all game state in this.*
+    class Game {
+      constructor({ cells, statusTextEl, restartBtnEl, boardEl, winLineEl, fireworksCanvas }) {
+        this.cells = cells;
+        this.statusTextEl = statusTextEl;
+        this.restartBtnEl = restartBtnEl;
+        this.boardEl = boardEl;
+        this.winLineEl = winLineEl;
+
+        this.fireworks = new Fireworks(fireworksCanvas);
+
+        this.winConditions = [
+          [0, 1, 2],
+          [3, 4, 5],
+          [6, 7, 8],
+          [0, 3, 6],
+          [1, 4, 7],
+          [2, 5, 8],
+          [0, 4, 8],
+          [2, 4, 6],
+        ];
+
+        this.bindEvents();
+        this.restart();
+      }
+
+      bindEvents() {
+        this.cells.forEach((cell) => {
+          cell.addEventListener("click", (e) => {
+            const index = Number(e.currentTarget.dataset.index);
+            this.makeMove(index);
+          });
+        });
+
+        this.restartBtnEl.addEventListener("click", () => this.restart());
+      }
+
+      restart() {
+        this.board = Array(9).fill("");
+        this.currentPlayer = "X";
+        this.running = true;
+
+        this.cells.forEach((cell) => (cell.disabled = false));
+        this.hideWinLine();
+        this.fireworks.stop();
+
+        this.setStatus(`${this.currentPlayer}'s turn`);
+        this.render();
+      }
+
+      setStatus(message) {
+        this.statusTextEl.textContent = message;
+      }
+
+      render() {
+        this.cells.forEach((cell, i) => {
+          cell.textContent = this.board[i];
+        });
+      }
+
+      // Core move logic: update state, check win/draw, then swap player
+      makeMove(index) {
+        if (!this.running) return;
+        if (this.board[index] !== "") return;
+
+        this.board[index] = this.currentPlayer;
+        this.render();
+
+        const result = this.getGameResult();
+
+        if (result.type === "WIN") {
+          this.setStatus(`${this.currentPlayer} wins!`);
+          this.showWinLine(result.condition);
+          this.fireworks.start();
+          this.endGame();
+          return;
+        }
+
+        if (result.type === "DRAW") {
+          this.setStatus("Draw!");
+          this.endGame();
+          return;
+        }
+
+        this.currentPlayer = this.currentPlayer === "X" ? "O" : "X";
+        this.setStatus(`${this.currentPlayer}'s turn`);
+      }
+
+      endGame() {
+        this.running = false;
+        this.cells.forEach((cell) => (cell.disabled = true));
+      }
+
+      getGameResult() {
+        for (const condition of this.winConditions) {
+          const [a, b, c] = condition;
+          const A = this.board[a];
+          const B = this.board[b];
+          const C = this.board[c];
+
+          if (A === "" || B === "" || C === "") continue;
+          if (A === B && B === C) return { type: "WIN", condition };
+        }
+
+        if (!this.board.includes("")) return { type: "DRAW" };
+        return { type: "CONTINUE" };
+      }
+
+      hideWinLine() {
+        this.winLineEl.style.display = "none";
+      }
+
+      showWinLine(condition) {
+        const startCell = this.cells[condition[0]];
+        const endCell = this.cells[condition[2]];
+
+        const boardRect = this.boardEl.getBoundingClientRect();
+        const startRect = startCell.getBoundingClientRect();
+        const endRect = endCell.getBoundingClientRect();
+
+        const x1 = (startRect.left + startRect.right) / 2 - boardRect.left;
+        const y1 = (startRect.top + startRect.bottom) / 2 - boardRect.top;
+        const x2 = (endRect.left + endRect.right) / 2 - boardRect.left;
+        const y2 = (endRect.top + endRect.bottom) / 2 - boardRect.top;
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+        this.winLineEl.style.display = "block";
+        this.winLineEl.style.width = `${length}px`;
+        this.winLineEl.style.transform = `translate(${x1}px, ${y1}px) rotate(${angle}deg)`;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const cells = Array.from(document.querySelectorAll(".cell"));
+      const statusTextEl = document.querySelector("#statusText");
+      const restartBtnEl = document.querySelector("#restartBtn");
+      const boardEl = document.querySelector("#cellContainer");
+      const winLineEl = document.querySelector("#winLine");
+      const fireworksCanvas = document.querySelector("#fireworksCanvas");
+
+      new Game({
+        cells,
+        statusTextEl,
+        restartBtnEl,
+        boardEl,
+        winLineEl,
+        fireworksCanvas,
+      });
+    });
+  </script>
+</body>
+</html>

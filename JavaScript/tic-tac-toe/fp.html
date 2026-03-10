@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tic-Tac-Toe (FP)</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body{
+      margin:0;
+      padding:40px 16px;
+      font-family: Arial, sans-serif;
+      display:flex;
+      justify-content:center;
+      text-align:center;
+      color:#111;
+      background: radial-gradient(circle at top, #ffffff 0%, #f2f2f2 55%, #e8e8e8 100%);
+    }
+
+    .game{ width:max-content; }
+
+    .title{
+      margin:0 0 12px;
+      font-size:44px;
+      letter-spacing:1px;
+      color:#111;
+      text-shadow: 0 2px 0 rgba(0,0,0,0.08);
+    }
+
+    .board{
+      position:relative;
+      display:grid;
+      grid-template-columns:repeat(3, 92px);
+      gap:10px;
+      margin:20px auto;
+      padding:14px;
+      border-radius:18px;
+      background: linear-gradient(180deg, #ffffff, #f6f6f6);
+      box-shadow:
+        0 18px 40px rgba(0,0,0,0.14),
+        inset 0 1px 0 rgba(255,255,255,0.9);
+    }
+
+    .cell{
+      width:92px;
+      height:92px;
+      border-radius:14px;
+      border:2px solid rgba(0,0,0,0.2);
+      background: linear-gradient(180deg, #ffffff, #f1f1f1);
+      box-shadow:
+        0 10px 18px rgba(0,0,0,0.10),
+        inset 0 2px 0 rgba(255,255,255,0.9);
+      cursor:pointer;
+      font-size:54px;
+      font-weight:800;
+      color:#d4af37; /* royal gold */
+      text-shadow:
+        0 0 8px rgba(212,175,55,0.55),
+        0 0 16px rgba(184,134,11,0.35);
+      user-select:none;
+    }
+
+    .cell:disabled{
+      cursor:not-allowed;
+      opacity:0.95;
+    }
+
+    .status{
+      min-height:24px;
+      margin:10px 0 16px;
+      font-size:18px;
+      color:#111;
+      font-weight:600;
+    }
+
+    .restart{
+      padding:10px 18px;
+      border-radius:10px;
+      border:1px solid rgba(0,0,0,0.25);
+      background: linear-gradient(180deg, #ffffff, #f1f1f1);
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(0,0,0,0.10);
+      font-weight:600;
+    }
+
+    .restart:hover{ filter:brightness(1.02); }
+
+    /* winning line */
+    .win-line{
+      position:absolute;
+      left:0;
+      top:0;
+      height:7px;
+      background: #d4af37;
+      border-radius:999px;
+      transform-origin:0 50%;
+      display:none;
+      z-index:5;
+      box-shadow: 0 0 12px rgba(212,175,55,0.65);
+    }
+
+    /* fireworks overlay */
+    #fireworksCanvas{
+      position:fixed;
+      inset:0;
+      width:100vw;
+      height:100vh;
+      pointer-events:none;
+      z-index:999;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="game">
+    <h1 class="title">Tic Tac Toe</h1>
+
+    <section class="board" id="board" aria-label="Tic Tac Toe Board">
+      <div class="win-line" id="winLine" aria-hidden="true"></div>
+
+      <button class="cell" type="button" data-index="0" aria-label="Cell 1"></button>
+      <button class="cell" type="button" data-index="1" aria-label="Cell 2"></button>
+      <button class="cell" type="button" data-index="2" aria-label="Cell 3"></button>
+
+      <button class="cell" type="button" data-index="3" aria-label="Cell 4"></button>
+      <button class="cell" type="button" data-index="4" aria-label="Cell 5"></button>
+      <button class="cell" type="button" data-index="5" aria-label="Cell 6"></button>
+
+      <button class="cell" type="button" data-index="6" aria-label="Cell 7"></button>
+      <button class="cell" type="button" data-index="7" aria-label="Cell 8"></button>
+      <button class="cell" type="button" data-index="8" aria-label="Cell 9"></button>
+    </section>
+
+    <p class="status" id="statusText" role="status" aria-live="polite"></p>
+    <button class="restart" id="restartBtn" type="button">Restart</button>
+  </main>
+
+  <canvas id="fireworksCanvas" aria-hidden="true"></canvas>
+
+  <script>
+    const winConditions = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    const initialState = () => ({
+      board: Array(9).fill(""),
+      currentPlayer: "X",
+      running: true,
+      result: null // only set on WIN or DRAW and not for turn updates
+    });
+
+    function getGameResult(board) {
+      for (const condition of winConditions) {
+        const [a,b,c] = condition;
+        if (board[a] && board[a] === board[b] && board[b] === board[c]) {
+          return { type: "WIN", condition };
+        }
+      }
+      if (!board.includes("")) return { type: "DRAW" };
+      return { type: "CONTINUE" };
+    }
+
+    // FP core= returns a NEW state object, does not mutate the existing state
+    function makeMove(state, index) {
+      if (!state.running) return state;
+      if (state.board[index] !== "") return state;
+
+      const newBoard = state.board.slice();
+      newBoard[index] = state.currentPlayer;
+
+      const result = getGameResult(newBoard);
+
+      if (result.type === "WIN" || result.type === "DRAW") {
+        return { ...state, board: newBoard, running: false, result };
+      }
+
+      return {
+        ...state,
+        board: newBoard,
+        currentPlayer: state.currentPlayer === "X" ? "O" : "X",
+        running: true,
+        result: null
+      };
+    }
+
+    function hideWinLine(winLineEl) {
+      winLineEl.style.display = "none";
+    }
+
+    function drawWinLine(ui, condition) {
+      const startCell = ui.cells[condition[0]];
+      const endCell = ui.cells[condition[2]];
+
+      const boardRect = ui.boardEl.getBoundingClientRect();
+      const startRect = startCell.getBoundingClientRect();
+      const endRect = endCell.getBoundingClientRect();
+
+      const x1 = (startRect.left + startRect.right)/2 - boardRect.left;
+      const y1 = (startRect.top + startRect.bottom)/2 - boardRect.top;
+      const x2 = (endRect.left + endRect.right)/2 - boardRect.left;
+      const y2 = (endRect.top + endRect.bottom)/2 - boardRect.top;
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+
+      const length = Math.sqrt(dx*dx + dy*dy);
+      const angle = Math.atan2(dy, dx) * 180/Math.PI;
+
+      ui.winLineEl.style.display = "block";
+      ui.winLineEl.style.width = `${length}px`;
+      ui.winLineEl.style.transform = `translate(${x1}px, ${y1}px) rotate(${angle}deg)`;
+    }
+
+    function render(state, ui) {
+      ui.cells.forEach((cell, i) => {
+        cell.textContent = state.board[i];
+        cell.disabled = !state.running || state.board[i] !== "";
+      });
+
+      if (!state.result) {
+        ui.statusEl.textContent = `${state.currentPlayer}'s turn`;
+        hideWinLine(ui.winLineEl);
+        return;
+      }
+
+      if (state.result.type === "WIN") {
+        ui.statusEl.textContent = `${state.currentPlayer} wins!`;
+        drawWinLine(ui, state.result.condition);
+        return;
+      }
+
+      ui.statusEl.textContent = "Draw!";
+      hideWinLine(ui.winLineEl);
+    }
+
+    class Fireworks {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+        this.particles = [];
+        this.running = false;
+        this.raf = null;
+        this.interval = null;
+        this.resize();
+        window.addEventListener("resize", () => this.resize());
+      }
+
+      resize() {
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = Math.floor(window.innerWidth * dpr);
+        this.canvas.height = Math.floor(window.innerHeight * dpr);
+        this.ctx.setTransform(dpr,0,0,dpr,0,0);
+      }
+
+      start() {
+        if (this.running) return;
+        this.running = true;
+        this.interval = setInterval(() => this.spawn(), 320);
+        this.loop();
+      }
+
+      stop() {
+        this.running = false;
+        if (this.interval) clearInterval(this.interval);
+        if (this.raf) cancelAnimationFrame(this.raf);
+        this.interval = null;
+        this.raf = null;
+        this.particles = [];
+        this.ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+      }
+
+      spawn() {
+        const x = Math.random()*window.innerWidth;
+        const y = Math.random()*(window.innerHeight*0.55);
+        const count = 55 + Math.floor(Math.random()*30);
+
+        for (let i=0;i<count;i++) {
+          const angle = Math.random()*Math.PI*2;
+          const speed = 2 + Math.random()*4;
+          this.particles.push({
+            x,y,
+            vx: Math.cos(angle)*speed,
+            vy: Math.sin(angle)*speed,
+            life: 70 + Math.floor(Math.random()*25),
+            r: 2 + Math.random()*2,
+            color: `hsl(${Math.floor(Math.random()*360)}, 100%, 60%)`
+          });
+        }
+      }
+
+      loop() {
+        const ctx = this.ctx;
+        ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+
+        this.particles = this.particles
+          .map(p => {
+            p.vy += 0.05;
+            p.vx *= 0.99;
+            p.vy *= 0.99;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 1;
+            return p;
+          })
+          .filter(p => p.life > 0);
+
+        for (const p of this.particles) {
+          ctx.globalAlpha = Math.max(0, p.life / 95);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        if (this.running) this.raf = requestAnimationFrame(() => this.loop());
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const ui = {
+        boardEl: document.getElementById("board"),
+        winLineEl: document.getElementById("winLine"),
+        statusEl: document.getElementById("statusText"),
+        restartBtn: document.getElementById("restartBtn"),
+        cells: Array.from(document.querySelectorAll(".cell"))
+      };
+
+      const fireworks = new Fireworks(document.getElementById("fireworksCanvas"));
+
+      let state = initialState();
+      render(state, ui);
+
+      ui.cells.forEach(cell => {
+        cell.addEventListener("click", (e) => {
+          const index = Number(e.currentTarget.dataset.index);
+          const nextState = makeMove(state, index);
+
+          const justWon = !state.result && nextState.result && nextState.result.type === "WIN";
+          if (justWon) fireworks.start();
+
+          state = nextState;
+          render(state, ui);
+        });
+      });
+
+      ui.restartBtn.addEventListener("click", () => {
+        fireworks.stop();
+        state = initialState();
+        render(state, ui);
+      });
+    });
+  </script>
+</body>
+</html>
