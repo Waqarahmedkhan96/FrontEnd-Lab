@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nokia-Style Snake (FP-ish) - Single File</title>
+  <style>
+    :root {
+      --frame: #1b2a22;
+      --frame2: #0f1913;
+      --lcd: #b9d28f;        /* classic green LCD */
+      --lcd-dark: #23402c;   /* dark pixels */
+      --lcd-mid: #3b5c40;    /* mid pixels */
+      --lcd-grid: rgba(35,64,44,.18);
+      --text: #1a2c20;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(1200px 800px at 50% 30%, #1a2420, #070b09);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    .shell {
+      width: min(760px, 94vw);
+      display: grid;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .nokia {
+      border-radius: 26px;
+      background: linear-gradient(180deg, var(--frame), var(--frame2));
+      padding: 18px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.55);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: rgba(255,255,255,.84);
+      font-size: 14px;
+      letter-spacing: .5px;
+      margin-bottom: 10px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      opacity: .92;
+      user-select: none;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(185,210,143,.9);
+      box-shadow: 0 0 12px rgba(185,210,143,.35);
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button, select {
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color: rgba(255,255,255,.9);
+      cursor: pointer;
+      outline: none;
+    }
+    button:hover, select:hover { background: rgba(255,255,255,.10); }
+
+    .lcd {
+      background: var(--lcd);
+      border-radius: 18px;
+      padding: 14px;
+      border: 2px solid rgba(0,0,0,.35);
+      box-shadow:
+        inset 0 0 0 2px rgba(255,255,255,.18),
+        inset 0 25px 60px rgba(0,0,0,.12);
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      user-select: none;
+    }
+
+    .hud small {
+      font-weight: 700;
+      letter-spacing: 1px;
+      opacity: .9;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: transparent;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius: 10px;
+    }
+
+    .hint {
+      color: rgba(255,255,255,.75);
+      font-size: 13px;
+      line-height: 1.5;
+      user-select: none;
+    }
+    kbd {
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.07);
+    }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .toggle { display:flex; gap:8px; align-items:center; }
+    input[type="checkbox"] { transform: translateY(1px); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="nokia">
+      <div class="topbar">
+        <div class="brand">
+          <span class="dot"></span>
+          <span>NOKIA-STYLE SNAKE</span>
+        </div>
+
+        <div class="controls">
+          <select id="speedSelect" title="Speed">
+            <option value="1">Speed 1 (Kids)</option>
+            <option value="2">Speed 2</option>
+            <option value="3" selected>Speed 3 (Classic)</option>
+            <option value="4">Speed 4</option>
+            <option value="5">Speed 5 (Fast)</option>
+          </select>
+
+          <button id="btnStart">Start / Restart</button>
+          <button id="btnPause">Pause</button>
+
+          <label class="toggle" title="Enable sound">
+            <input type="checkbox" id="soundToggle" checked />
+            Sound
+          </label>
+        </div>
+      </div>
+
+      <div class="lcd">
+        <div class="hud">
+          <div id="hudLeft">SCORE 000</div>
+          <div id="hudRight"><small>HI</small> <span id="hudHi">000</span></div>
+        </div>
+        <canvas id="game" width="600" height="400" aria-label="Snake game canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="hint">
+      Controls: <kbd>Arrow Keys</kbd> or <kbd>W A S D</kbd> • Pause/Resume: <kbd>Space</kbd> • Restart: <kbd>R</kbd><br/>
+      Nokia mode: wrap walls + 180° turns + LCD look + retro beeps.
+    </div>
+  </div>
+
+<script>
+/**
+ * Nokia-style Snake (FP-ish):
+ * - LCD palette
+ * - Wrap walls (toroidal)
+ * - Allow 180° turns
+ * - Simple beeps (WebAudio) for eat / tick / game over
+ * - Single-file, no assets
+ */
+
+// ---------------- Config ----------------
+const CFG = Object.freeze({
+  cols: 30,
+  rows: 20,
+  cell: 20, // 30*20=600, 20*20=400 matches canvas
+  initialLength: 4,
+
+  // Speed steps (ticks/sec)
+  speedSteps: Object.freeze({
+    1: 4,
+    2: 6,
+    3: 8,   // classic-ish
+    4: 10,
+    5: 12
+  }),
+
+  // LCD colors
+  lcd: Object.freeze({
+    bg: getCSS("--lcd"),
+    dark: getCSS("--lcd-dark"),
+    mid: getCSS("--lcd-mid"),
+    grid: getCSS("--lcd-grid"),
+    text: getCSS("--text")
+  })
+});
+
+function getCSS(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+const DIRS = Object.freeze({
+  Up:    Object.freeze({ x: 0,  y: -1 }),
+  Down:  Object.freeze({ x: 0,  y: 1 }),
+  Left:  Object.freeze({ x: -1, y: 0 }),
+  Right: Object.freeze({ x: 1,  y: 0 })
+});
+
+// ---------------- FP helpers ----------------
+const eqPos = (a, b) => a.x === b.x && a.y === b.y;
+const range = (n) => Array.from({ length: n }, (_, i) => i);
+const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+const wrapPos = (cols, rows, p) => ({
+  x: (p.x % cols + cols) % cols,
+  y: (p.y % rows + rows) % rows
+});
+
+const nextHead = (head, dir) => ({ x: head.x + dir.x, y: head.y + dir.y });
+const occupies = (snake, p) => snake.some(seg => eqPos(seg, p));
+
+const spawnFood = (cols, rows, snake) => {
+  for (let tries = 0; tries < 250; tries++) {
+    const c = { x: randomInt(0, cols - 1), y: randomInt(0, rows - 1) };
+    if (!occupies(snake, c)) return c;
+  }
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const c = { x, y };
+    if (!occupies(snake, c)) return c;
+  }
+  return null;
+};
+
+const makeInitialSnake = (cols, rows, len) => {
+  const start = { x: Math.floor(cols / 2), y: Math.floor(rows / 2) };
+  return range(len).map(i => ({ x: start.x - i, y: start.y }));
+};
+
+const hitSelf = (snake) => {
+  const head = snake[0];
+  return snake.slice(1).some(seg => eqPos(seg, head));
+};
+
+const advanceSnake = (cols, rows, snake, dir, grow) => {
+  const raw = nextHead(snake[0], dir);
+  const head = wrapPos(cols, rows, raw); // ALWAYS WRAP (Nokia)
+  const moved = [head, ...snake];
+  return grow ? moved : moved.slice(0, moved.length - 1);
+};
+
+const update = (state, input) => {
+  if (!state.running || state.over) return state;
+
+  // Nokia feel: allow 180° turns -> always accept wanted direction if present
+  const dir = input.dir || state.dir;
+
+  const rawNext = nextHead(state.snake[0], dir);
+  const headNext = wrapPos(state.cols, state.rows, rawNext);
+
+  const willEat = state.food && eqPos(headNext, state.food);
+  const snakeNext = advanceSnake(state.cols, state.rows, state.snake, dir, willEat);
+
+  const selfCrash = hitSelf(snakeNext);
+  if (selfCrash) {
+    return { ...state, dir, snake: snakeNext, running: false, over: true, event: "die" };
+  }
+
+  if (willEat) {
+    const score = state.score + 1;
+    const newFood = spawnFood(state.cols, state.rows, snakeNext);
+    const win = newFood === null;
+    return {
+      ...state,
+      dir,
+      snake: snakeNext,
+      food: newFood,
+      score,
+      best: Math.max(state.best, score),
+      running: win ? false : state.running,
+      over: win ? true : state.over,
+      win,
+      event: "eat"
+    };
+  }
+
+  return { ...state, dir, snake: snakeNext, event: "move" };
+};
+
+const makeState = (best, speedStep) => {
+  const snake = makeInitialSnake(CFG.cols, CFG.rows, CFG.initialLength);
+  return Object.freeze({
+    cols: CFG.cols,
+    rows: CFG.rows,
+    cell: CFG.cell,
+
+    speedStep: speedStep,
+    speed: CFG.speedSteps[speedStep],
+
+    snake,
+    dir: DIRS.Right,
+    food: spawnFood(CFG.cols, CFG.rows, snake),
+
+    score: 0,
+    best: best || 0,
+
+    running: true,
+    over: false,
+    win: false,
+    event: "none"
+  });
+};
+
+// ---------------- Drawing (LCD pixel look) ----------------
+const draw = (ctx, canvas, s) => {
+  const { cols, rows, cell } = s;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // subtle LCD grid
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = CFG.lcd.grid;
+  for (let x = 0; x <= cols; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * cell + 0.5, 0);
+    ctx.lineTo(x * cell + 0.5, rows * cell);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= rows; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * cell + 0.5);
+    ctx.lineTo(cols * cell, y * cell + 0.5);
+    ctx.stroke();
+  }
+
+  // food (classic square)
+  if (s.food) {
+    ctx.fillStyle = CFG.lcd.dark;
+    const pad = 6;
+    ctx.fillRect(s.food.x * cell + pad, s.food.y * cell + pad, cell - pad * 2, cell - pad * 2);
+  }
+
+  // snake (chunky blocks with slight “dither”)
+  s.snake.forEach((seg, i) => {
+    const isHead = i === 0;
+    ctx.fillStyle = isHead ? CFG.lcd.dark : CFG.lcd.mid;
+    ctx.fillRect(seg.x * cell + 2, seg.y * cell + 2, cell - 4, cell - 4);
+
+    // tiny head eye dot (very subtle)
+    if (isHead) {
+      ctx.fillStyle = CFG.lcd.bg;
+      ctx.fillRect(seg.x * cell + cell - 8, seg.y * cell + 6, 2, 2);
+      ctx.fillRect(seg.x * cell + cell - 8, seg.y * cell + cell - 8, 2, 2);
+    }
+  });
+
+  // overlay text (LCD style)
+  if (!s.running || s.over) {
+    ctx.fillStyle = "rgba(185,210,143,0.70)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = CFG.lcd.dark;
+    ctx.textAlign = "center";
+    ctx.font = "700 34px ui-monospace, monospace";
+
+    const title = s.win ? "YOU WIN" : s.over ? "GAME OVER" : "PAUSED";
+    ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
+
+    ctx.font = "700 14px ui-monospace, monospace";
+    const msg = s.over ? "PRESS R" : "PRESS SPACE";
+    ctx.fillText(msg, canvas.width / 2, canvas.height / 2 + 18);
+  }
+};
+
+// ---------------- Sound (WebAudio beeps) ----------------
+function makeSound() {
+  let ctx = null;
+
+  const ensure = () => {
+    if (ctx) return ctx;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    return ctx;
+  };
+
+  const beep = (freq, durMs, type = "square", gain = 0.04) => {
+    const ac = ensure();
+    const t0 = ac.currentTime;
+
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durMs / 1000);
+
+    osc.connect(g);
+    g.connect(ac.destination);
+
+    osc.start(t0);
+    osc.stop(t0 + durMs / 1000 + 0.02);
+  };
+
+  const eat = () => { beep(880, 70, "square", 0.05); beep(1320, 55, "square", 0.04); };
+  const move = () => { /* subtle tick */ beep(260, 18, "square", 0.015); };
+  const die  = () => { beep(220, 140, "square", 0.05); beep(165, 200, "square", 0.05); };
+
+  return { beep, eat, move, die, ensure };
+}
+
+// ---------------- Input mapping ----------------
+const dirFromKey = (key) => {
+  const k = key.toLowerCase();
+  if (k === "arrowup" || k === "w") return DIRS.Up;
+  if (k === "arrowdown" || k === "s") return DIRS.Down;
+  if (k === "arrowleft" || k === "a") return DIRS.Left;
+  if (k === "arrowright" || k === "d") return DIRS.Right;
+  return null;
+};
+
+// ---------------- Runtime shell ----------------
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx2d = canvas.getContext("2d");
+
+  // Exact pixel size for crisp LCD blocks
+  canvas.width = CFG.cols * CFG.cell;
+  canvas.height = CFG.rows * CFG.cell;
+
+  const hudLeft = document.getElementById("hudLeft");
+  const hudHi = document.getElementById("hudHi");
+
+  const speedSelect = document.getElementById("speedSelect");
+  const btnStart = document.getElementById("btnStart");
+  const btnPause = document.getElementById("btnPause");
+  const soundToggle = document.getElementById("soundToggle");
+
+  const BEST_KEY = "nokia_snake_best";
+  const SPEED_KEY = "nokia_snake_speedStep";
+  const SOUND_KEY = "nokia_snake_sound";
+
+  const getBest = () => Number(localStorage.getItem(BEST_KEY) || "0");
+  const setBest = (n) => localStorage.setItem(BEST_KEY, String(n));
+
+  const getSpeedStep = () => Number(localStorage.getItem(SPEED_KEY) || "3");
+  const setSpeedStep = (n) => localStorage.setItem(SPEED_KEY, String(n));
+
+  const getSoundOn = () => (localStorage.getItem(SOUND_KEY) ?? "1") === "1";
+  const setSoundOn = (on) => localStorage.setItem(SOUND_KEY, on ? "1" : "0");
+
+  const snd = makeSound();
+
+  // restore settings
+  const initialStep = Math.min(5, Math.max(1, getSpeedStep()));
+  speedSelect.value = String(initialStep);
+  soundToggle.checked = getSoundOn();
+
+  let state = makeState(getBest(), initialStep);
+  let input = { dir: null };
+
+  const fmt3 = (n) => String(n).padStart(3, "0");
+  const updateHud = (s) => {
+    hudLeft.textContent = `SCORE ${fmt3(s.score)}`;
+    hudHi.textContent = fmt3(s.best);
+  };
+
+  const restart = () => {
+    state = makeState(getBest(), Number(speedSelect.value));
+    input = { dir: null };
+  };
+
+  const togglePause = () => {
+    if (state.over) return;
+    state = { ...state, running: !state.running };
+  };
+
+  // main loop fixed timestep
+  let last = performance.now();
+  let acc = 0;
+
+  const tick = (now) => {
+    const dt = now - last;
+    last = now;
+    acc += dt;
+
+    const msPerTick = 1000 / state.speed;
+
+    while (acc >= msPerTick) {
+      const next = update(state, input);
+      input = { dir: null };
+      state = next;
+
+      if (state.best !== getBest()) setBest(state.best);
+
+      // sound events
+      if (soundToggle.checked) {
+        if (state.event === "eat") snd.eat();
+        else if (state.event === "die") snd.die();
+        else if (state.event === "move") snd.move();
+      }
+
+      acc -= msPerTick;
+    }
+
+    updateHud(state);
+    draw(ctx2d, canvas, state);
+    requestAnimationFrame(tick);
+  };
+
+  // events
+  window.addEventListener("keydown", (e) => {
+    const d = dirFromKey(e.key);
+    if (d) {
+      e.preventDefault();
+      input = { dir: d };
+      // required on some browsers: audio only after user gesture
+      if (soundToggle.checked) snd.ensure();
+      return;
+    }
+
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); togglePause(); if (soundToggle.checked) snd.ensure(); }
+    if (k === "r") { e.preventDefault(); restart(); if (soundToggle.checked) snd.ensure(); }
+  });
+
+  btnStart.addEventListener("click", () => { restart(); if (soundToggle.checked) snd.ensure(); });
+  btnPause.addEventListener("click", () => { togglePause(); if (soundToggle.checked) snd.ensure(); });
+
+  speedSelect.addEventListener("change", (e) => {
+    const step = Number(e.target.value);
+    setSpeedStep(step);
+    state = { ...state, speedStep: step, speed: CFG.speedSteps[step] }; // live change
+  });
+
+  soundToggle.addEventListener("change", (e) => {
+    setSoundOn(e.target.checked);
+    if (e.target.checked) snd.ensure();
+  });
+
+  updateHud(state);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
